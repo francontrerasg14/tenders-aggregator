@@ -1,9 +1,7 @@
-name: PLACSP + CCAA (RSS) diario
+name: PLACSP + CCAA (RSS) debug
 
 on:
-  schedule:
-    - cron: "15 6 * * *"   # 06:15 UTC ≈ 08:15 Madrid
-  workflow_dispatch: {}
+  workflow_dispatch: {}   # para lanzarlo a mano
 
 jobs:
   run:
@@ -11,6 +9,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Show tree
+        run: |
+          pwd
+          ls -la
+          echo "---- collectors ----"
+          ls -la collectors || true
+          echo "---- config.yml ----"
+          cat config.yml || true
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -22,18 +29,44 @@ jobs:
           python -m pip install -U pip
           pip install -r requirements.txt
 
-      - name: Run aggregator (ayer en Madrid)
-        env:
-          CPV: "09330000 45261215 45315300"
+      - name: Quick curl of RSS
         run: |
-          # calcular 'ayer' en Madrid aproximado: UTC+2
-          FECHA=$(date -u -d "now+2 hour -1 day" +"%Y-%m-%d")
-          echo "Fecha objetivo (Madrid): $FECHA"
-          python run_daily.py --date $FECHA --when either --cpv $CPV --cpv-scope folder --out tenders_${FECHA}.csv
-          ls -l tenders_${FECHA}.csv
+          echo "---- Galicia RSS ----"
+          curl -I https://www.contratosdegalicia.gal/rss/ultimas-publicacions.rss
+          echo "---- Madrid RSS ----"
+          curl -I https://contratos-publicos.comunidad.madrid/convocatorias-anunciadas-a-licitacion/feed
 
-      - name: Upload CSV artifact
+      - name: Set date (ayer Madrid aprox)
+        id: dt
+        run: echo "FECHA=$(date -u -d 'now+2 hour -1 day' +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      # 1) Solo PLACSP, con tus CPV
+      - name: Run PLACSP only (with CPV)
+        run: |
+          echo "Fecha: ${{ steps.dt.outputs.FECHA }}"
+          python run_daily.py --date ${{ steps.dt.outputs.FECHA }} --when either --cpv 09330000 45261215 45315300 --cpv-scope folder --no-rss --out placsp_${{ steps.dt.outputs.FECHA }}.csv
+          wc -l placsp_${{ steps.dt.outputs.FECHA }}.csv || true
+          head -n 5 placsp_${{ steps.dt.outputs.FECHA }}.csv || true
+
+      # 2) Solo RSS, SIN filtro CPV (para ver si entra algo)
+      - name: Run RSS only (NO CPV filter)
+        run: |
+          # Trucazo: pasar un CPV vacío para que el agregador no filtre por CPV
+          python run_daily.py --date ${{ steps.dt.outputs.FECHA }} --cpv-mode prefix --cpv "" --no-placsp --out rss_nocpv_${{ steps.dt.outputs.FECHA }}.csv
+          wc -l rss_nocpv_${{ steps.dt.outputs.FECHA }}.csv || true
+          head -n 5 rss_nocpv_${{ steps.dt.outputs.FECHA }}.csv || true
+
+      # 3) Solo RSS, con tus CPV (para comprobar el filtro)
+      - name: Run RSS only (with CPV)
+        run: |
+          python run_daily.py --date ${{ steps.dt.outputs.FECHA }} --cpv 09330000 45261215 45315300 --no-placsp --out rss_${{ steps.dt.outputs.FECHA }}.csv
+          wc -l rss_${{ steps.dt.outputs.FECHA }}.csv || true
+          head -n 5 rss_${{ steps.dt.outputs.FECHA }}.csv || true
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tenders-csv
-          path: tenders_*.csv
+          name: debug-csvs
+          path: |
+            placsp_*.csv
+            rss_*.csv

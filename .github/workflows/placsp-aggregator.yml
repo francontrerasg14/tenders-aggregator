@@ -1,8 +1,8 @@
-name: PLACSP UI diario
+name: PLACSP + CCAA (RSS) diario
 
 on:
   schedule:
-    - cron: "10 6 * * *"   # 06:10 UTC -> 08:10 Madrid (ajusta)
+    - cron: "15 6 * * *"   # 06:15 UTC ≈ 08:15 Madrid
   workflow_dispatch: {}
 
 jobs:
@@ -21,18 +21,19 @@ jobs:
         run: |
           python -m pip install -U pip
           pip install -r requirements.txt
-          python -m playwright install --with-deps chromium
 
-      - name: Run scraper (ayer)
+      - name: Run aggregator (ayer en Madrid)
         env:
           CPV: "09330000 45261215 45315300"
         run: |
-          FECHA=$(date -u -d "now+2 hour -1 day" +"%Y-%m-%d")   # ayer en Madrid aprox
-          python placsp_search_scraper.py --date $FECHA --cpv $CPV --headless --out placsp_ui_${FECHA}.csv
-          ls -l placsp_ui_${FECHA}.csv
+          # calcular 'ayer' en Madrid aproximado: UTC+2
+          FECHA=$(date -u -d "now+2 hour -1 day" +"%Y-%m-%d")
+          echo "Fecha objetivo (Madrid): $FECHA"
+          python run_daily.py --date $FECHA --when either --cpv $CPV --cpv-scope folder --out tenders_${FECHA}.csv
+          ls -l tenders_${FECHA}.csv
 
       - name: Upload CSV artifact
         uses: actions/upload-artifact@v4
         with:
-          name: placsp-ui-csv
-          path: placsp_ui_*.csv
+          name: tenders-csv
+          path: tenders_*.csv

@@ -44,10 +44,18 @@ def cpv_match(values: list[str] | set[str], targets: set[str], mode: str = "exac
                 return True
     return False
 
-# Acepta 8 dígitos y opcional "-dígito de control" (NNNNNNNN-#); devuelve solo los 8 dígitos
+# 8 dígitos con check digit opcional (NNNNNNNN-#) → devolvemos solo los 8
 CPV_RE = re.compile(r"\b(\d{8})(?:-\d)?\b")
 
 def extract_cpvs_from_text(text: str) -> list[str]:
     if not text:
         return []
     return list({m.group(1) for m in CPV_RE.finditer(text)})
+
+# Normaliza espacios “raros” (NBSP, etc.)
+NBSP_RE = re.compile(r"[\u00A0\u2007\u202F]")
+def norm_spaces(s: str) -> str:
+    if not s:
+        return s
+    s = NBSP_RE.sub(" ", s)
+    return re.sub(r"\s+", " ", s).strip()

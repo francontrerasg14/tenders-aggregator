@@ -1,0 +1,13 @@
+rss_sources:
+  - name: Galicia
+    url: "https://www.contratosdegalicia.gal/rss/ultimas-publicacions.rss"
+    follow_detail: true        # abre el detalle para extraer expediente/CPV/importe/órgano
+
+  - name: Madrid
+    url: "https://contratos-publicos.comunidad.madrid/convocatorias-anunciadas-a-licitacion/feed"
+    follow_detail: true        # idem; el RSS trae poco, el detalle lo mejora
+
+# Puedes añadir más:
+#  - name: Navarra
+#    url: "https://.../feed"
+#    follow_detail: true

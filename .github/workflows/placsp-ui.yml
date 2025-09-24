@@ -1,0 +1,38 @@
+name: PLACSP UI diario
+
+on:
+  schedule:
+    - cron: "10 6 * * *"   # 06:10 UTC -> 08:10 Madrid (ajusta)
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Run scraper (ayer)
+        env:
+          CPV: "09330000 45261215 45315300"
+        run: |
+          FECHA=$(date -u -d "now+2 hour -1 day" +"%Y-%m-%d")   # ayer en Madrid aprox
+          python placsp_search_scraper.py --date $FECHA --cpv $CPV --headless --out placsp_ui_${FECHA}.csv
+          ls -l placsp_ui_${FECHA}.csv
+
+      - name: Upload CSV artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: placsp-ui-csv
+          path: placsp_ui_*.csv

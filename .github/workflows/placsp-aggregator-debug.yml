@@ -1,68 +1,32 @@
 name: PLACSP + CCAA (RSS) debug
 
-on:
-  workflow_dispatch: {}
+on: { workflow_dispatch: {} }
 
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Show tree & config
         run: |
-          pwd
           ls -la
-          echo "---- collectors ----"
-          ls -la collectors || true
-          echo "---- config.yml ----"
-          cat config.yml || true
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
+          echo "---- collectors ----"; ls -la collectors || true
+          echo "---- config.yml ----"; cat config.yml || true
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
       - name: Install deps
         run: |
           python -m pip install -U pip
           pip install -r requirements.txt
-
-      - name: Quick curl of RSS
-        run: |
-          echo "---- Galicia RSS ----"
-          curl -I https://www.contratosdegalicia.gal/rss/ultimas-publicacions.rss
-          echo "---- Madrid RSS ----"
-          curl -I https://contratos-publicos.comunidad.madrid/convocatorias-anunciadas-a-licitacion/feed
-
       - name: Set date (ayer Madrid)
         id: dt
         run: echo "FECHA=$(date -u -d 'now+2 hour -1 day' +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-      - name: PLACSP only (with your CPV exact)
-        run: |
-          echo "Fecha: ${{ steps.dt.outputs.FECHA }}"
-          python run_daily.py --date ${{ steps.dt.outputs.FECHA }} --when either --cpv 09330000 45261215 45315300 --cpv-scope folder --no-rss --out placsp_${{ steps.dt.outputs.FECHA }}.csv
-          wc -l placsp_${{ steps.dt.outputs.FECHA }}.csv || true
-          head -n 5 placsp_${{ steps.dt.outputs.FECHA }}.csv || true
-
-      - name: RSS only (NO CPV filter)
-        run: |
-          python run_daily.py --date ${{ steps.dt.outputs.FECHA }} --cpv-mode prefix --cpv "" --no-placsp --out rss_nocpv_${{ steps.dt.outputs.FECHA }}.csv
-          wc -l rss_nocpv_${{ steps.dt.outputs.FECHA }}.csv || true
-          head -n 10 rss_nocpv_${{ steps.dt.outputs.FECHA }}.csv || true
-
-      - name: RSS only (with CPV prefixes)
+      - name: RSS only (prefijo CPV, follow_detail con diagnóstico)
         run: |
           python run_daily.py --date ${{ steps.dt.outputs.FECHA }} --cpv-mode prefix --cpv 0933 4526 4531 --no-placsp --out rss_${{ steps.dt.outputs.FECHA }}.csv
           wc -l rss_${{ steps.dt.outputs.FECHA }}.csv || true
-          head -n 10 rss_${{ steps.dt.outputs.FECHA }}.csv || true
-
-      - name: Upload debug artifacts
-        uses: actions/upload-artifact@v4
+          head -n 20 rss_${{ steps.dt.outputs.FECHA }}.csv || true
+      - uses: actions/upload-artifact@v4
         with:
           name: debug-csvs
-          path: |
-            placsp_*.csv
-            rss_*.csv
+          path: rss_*.csv

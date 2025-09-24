@@ -2,11 +2,11 @@
 """
 Collector genérico de RSS con enriquecimiento opcional por detalle.
 - Lee RSS/Atom, filtra por fecha y CPV.
-- Si follow_detail=True: hace GET a cada enlace y extrae expediente, órgano, CPV, importes.
+- Si follow_detail=True: GET a cada enlace y extrae expediente, órgano, CPV, importes.
   Parsers incluidos:
     * Comunidad de Madrid (contratos-publicos.comunidad.madrid)
-    * Galicia PcPG (contratosdegalicia.gal)
-    * Fallback genérico si el dominio no está mapeado.
+    * Galicia PcPG (contratosdegalicia.gal) — lee la TABLA de CPV para sacar TODOS los códigos
+    * Fallback genérico
 """
 import re, time, feedparser, requests
 from urllib.parse import urlparse
@@ -24,7 +24,7 @@ def _get(url: str, timeout: int = 60) -> html.HtmlElement | None:
     r.raise_for_status()
     return html.fromstring(r.content)
 
-# -------- Parsers de detalle --------
+# ---------- Parsers de detalle ----------
 def parse_detail_madrid(doc: html.HtmlElement) -> dict:
     out = {}
     title = doc.xpath("string(//h1)") or doc.xpath("string(//h2)")
@@ -44,21 +44,54 @@ def parse_detail_madrid(doc: html.HtmlElement) -> dict:
     return out
 
 def parse_detail_galicia(doc: html.HtmlElement) -> dict:
+    """
+    PcPG (contratosdegalicia.gal). Extrae expediente, órgano, importe y TODOS los CPV leyendo la tabla.
+    """
     out = {}
     title = doc.xpath("string(//h1)") or doc.xpath("string(//h2)")
     out["objeto"] = _norm(title)
-    txt = doc.text_content() or ""
-    m = re.search(r"\b[\w\-]+/\d{4}/\d+\b", txt)
-    if m: out["expediente"] = m.group(0)
+
+    txt_all = doc.text_content() or ""
+    m = re.search(r"\b[\w\-]+/\d{4}/\d+\b", txt_all)
+    if m:
+        out["expediente"] = m.group(0)
+
     for label in ["Órgano de contratación", "Organismo", "Órgano"]:
         xp = f"//*[contains(translate(text(),'{label.upper()}','{label.upper()}'),'{label.upper()}')]/following::*[1]"
         val = doc.xpath(f"string({xp})")
         if val:
-            out["organo"] = _norm(val); break
-    m = re.search(r"[\d\.\s]+,\d{2}\s*€", txt)
-    if m: out["importe"] = _norm(m.group(0))
-    cpvs = extract_cpvs_from_text(txt)
-    if cpvs: out["cpv"] = ";".join(sorted(set(cpvs)))
+            out["organo"] = _norm(val)
+            break
+
+    m = re.search(r"[\d\.\s]+,\d{2}\s*€", txt_all)
+    if m:
+        out["importe"] = _norm(m.group(0))
+
+    # --- CPV: tabla específica + fallback ---
+    cpv_set = set()
+
+    # (a) Tabla CPV: leer la primera columna de cada fila
+    cells = doc.xpath(
+        "//*[contains(translate(normalize-space(.),'CPV','cpv'),'cpv')]/"
+        "ancestor::*[self::div or self::section or self::table][1]"
+        "//table//tr/td[1] | "
+        "//*[contains(translate(normalize-space(.),'VOCABULARIO COMÚN','VOCABULARIO COMÚN'),'VOCABULARIO COMÚN')]/"
+        "ancestor::*[self::div or self::section or self::table][1]"
+        "//table//tr/td[1]"
+    )
+    for td in cells:
+        code_text = (td.text_content() or "").strip()
+        m = re.search(r"(\d{8})(?:-\d)?", code_text)
+        if m:
+            cpv_set.add(m.group(1))
+
+    # (b) Fallback global
+    if not cpv_set:
+        cpv_set.update(extract_cpvs_from_text(txt_all))
+
+    if cpv_set:
+        out["cpv"] = ";".join(sorted(cpv_set))
+
     return out
 
 PARSERS_BY_DOMAIN = {
@@ -91,7 +124,6 @@ def enrich_by_detail(url: str) -> dict:
     except Exception:
         return {}
 
-# -------- Colector principal --------
 def collect(source_name: str,
             feed_url: str,
             date_start: datetime,
@@ -131,17 +163,16 @@ def collect(source_name: str,
         m = re.search(r"[\d\.\s]+,\d{2}\s*€", content)
         if m: importe = _norm(m.group(0))
 
-        cpvs_base = extract_cpvs_from_text(content)
+        cpvs = extract_cpvs_from_text(content)
 
         # Enriquecer con detalle
-        cpvs = cpvs_base[:]
         if follow_detail and link:
             time.sleep(polite_delay)
             extra = enrich_by_detail(link)
-            if extra.get("expediente"): expediente = extra["expediente"]
-            if extra.get("organo"):     organo     = extra["organo"]
-            if extra.get("importe"):    importe    = extra["importe"]
-            if extra.get("objeto"):     title      = extra["objeto"]
+            expediente = extra.get("expediente", expediente)
+            organo     = extra.get("organo", organo)
+            importe    = extra.get("importe", importe)
+            title      = extra.get("objeto", title)
             if extra.get("cpv"):
                 cpvs = sorted(set(cpvs + extra["cpv"].split(";")))
 

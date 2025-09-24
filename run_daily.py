@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 Agregador multi-fuente: PLACSP 643 + RSS de CCAA (config.yml)
-Uso típico:
-  python run_daily.py --date 2025-09-23 --when published --cpv 09330000 45261215 45315300 --cpv-scope folder
-  python run_daily.py --date 2025-09-22,2025-09-23 --when either --cpv 0933 --cpv-mode prefix
+Uso:
+  python run_daily.py --date 2025-09-23 --when either --cpv 09330000 45261215 45315300 --cpv-scope folder
 """
 import argparse, csv, os, yaml
-from datetime import datetime, timedelta
+from datetime import timedelta
 from dateutil import tz
 from collectors.placsp643 import collect as placsp_collect
 from collectors.rss_generic import collect as rss_collect
@@ -14,13 +13,13 @@ from collectors.utils import normalize_cpv_list, parse_date_any
 
 def parse_args():
     ap = argparse.ArgumentParser("Tenders aggregator (PLACSP + RSS CCAA)")
-    ap.add_argument("--date", required=True, help="YYYY-MM-DD o rango YYYY-MM-DD,YYYY-MM-DD (zona Europe/Madrid)")
+    ap.add_argument("--date", required=True, help="YYYY-MM-DD o rango YYYY-MM-DD,YYYY-MM-DD (Europe/Madrid)")
     ap.add_argument("--when", choices=["updated","published","either"], default="either", help="Solo PLACSP")
     ap.add_argument("--cpv", nargs="+", default=["09330000","45261215","45315300"])
     ap.add_argument("--cpv-mode", choices=["exact","prefix"], default="exact")
     ap.add_argument("--cpv-scope", choices=["folder","lots","both"], default="folder", help="Solo PLACSP")
     ap.add_argument("--config", default="config.yml", help="YAML con rss_sources")
-    ap.add_argument("--out", default=None, help="CSV de salida (por defecto: tenders_<fecha>.csv)")
+    ap.add_argument("--out", default=None, help="CSV (por defecto: tenders_<fecha>.csv)")
     ap.add_argument("--no-placsp", action="store_true", help="No incluir PLACSP (solo RSS)")
     ap.add_argument("--no-rss", action="store_true", help="No incluir RSS (solo PLACSP)")
     return ap.parse_args()
@@ -30,7 +29,7 @@ def madrid_day_bounds(day_str: str):
     d = parse_date_any(day_str)
     if not d: raise SystemExit("Fecha inválida")
     d = d.replace(tzinfo=tz_mad).replace(hour=0, minute=0, second=0, microsecond=0)
-    d_end = d + timedelta(days=1) - timedelta(seconds=1)
+    d_end = d.replace(hour=23, minute=59, second=59)
     return d, d_end
 
 def parse_date_range(arg_date: str):
@@ -38,7 +37,6 @@ def parse_date_range(arg_date: str):
         a, b = [x.strip() for x in arg_date.split(",", 1)]
         start, _ = madrid_day_bounds(a)
         end, _ = madrid_day_bounds(b)
-        end = end.replace(hour=23, minute=59, second=59)
         return start, end
     else:
         return madrid_day_bounds(arg_date)

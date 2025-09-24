@@ -90,4 +90,19 @@ def collect(date_iso: str,
                 cpvs = set(_cpv_scoped(e, cpv_scope))
                 if targets and not cpv_match(cpvs, targets, cpv_mode):
                     continue
-                expediente = _t1(e, "string(.//*[local-name()='ContractF]()*_
+                expediente = _t1(e, "string(.//*[local-name()='ContractFolderID'])")
+                title      = _t1(e, "string(./*[local-name()='title'])")
+                organo     = _t1(e, "string(.//*[local-name()='ContractingPartyName'])")
+                importe    = _t1(e, "string(.//*[local-name()='TotalAmount'])")
+                estado     = _t1(e, "string(.//*[local-name()='ContractFolderStatus'])")
+                published  = _t1(e, "string(./*[local-name()='published'])")
+                updated    = _t1(e, "string(./*[local-name()='updated'])")
+                link       = _best_link(e)
+                rows.append({
+                    "fuente":"PLACSP",
+                    "expediente":expediente, "objeto":title, "organo":organo, "estado":estado,
+                    "importe":importe, "cpv":";".join(sorted(set(cpvs))),
+                    "fecha_published":published, "fecha_updated":updated, "enlace":link
+                })
+    rows.sort(key=lambda r:(r.get("expediente") or "", r.get("enlace") or ""))
+    return rows
